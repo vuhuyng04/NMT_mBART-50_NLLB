@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Dual Model Translation Comparison{% endblock %}
+
+{% block content %}
+<div class="translation-container">
+    <div class="textarea-container">
+        <label for="inputText" class="form-label">Source Language (<span id="source-lang">English</span>)</label>
+        <textarea id="inputText" class="form-control" placeholder="Enter text to translate..." required></textarea>
+    </div>
+    <div class="swap-btn">
+        <button class="btn btn-secondary" id="swap-btn" aria-label="Swap languages">⇄</button>
+    </div>
+    <div class="textarea-container">
+        <label for="outputText" class="form-label">Target Language (<span id="target-lang">Vietnamese</span>)</label>
+        <div class="output-container">
+            <div class="model-output">
+                <h3>MBART-50</h3>
+                <textarea id="mbart-output" class="form-control" readonly placeholder="MBART translation will appear here..."></textarea>
+                <div class="metrics">
+                    <span class="time-metric">Time: <span id="mbart-time">-</span> sec</span>
+                </div>
+            </div>
+            <div class="model-output">
+                <h3>NLLB-200</h3>
+                <textarea id="nllb-output" class="form-control" readonly placeholder="NLLB translation will appear here..."></textarea>
+                <div class="metrics">
+                    <span class="time-metric">Time: <span id="nllb-time">-</span> sec</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="text-center">
+    <button class="btn btn-primary" id="translate-btn" aria-label="Translate text">Translate</button>
+    <div id="loading-spinner" class="spinner-border text-primary mt-3" role="status" style="display: none;">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+
+<div class="model-comparison">
+    <h2>Model Comparison</h2>
+    <div class="comparison-chart">
+        <div id="time-comparison" class="chart">
+            <!-- Chart will be generated here -->
+        </div>
+    </div>
+</div>
+
+<script>
+    let translationDirection = 'en_to_vi';
+
+    document.getElementById('translate-btn').addEventListener('click', function () {
+        const inputText = document.getElementById('inputText').value.trim();
+        const spinner = document.getElementById('loading-spinner');
+        
+        // Reset time metrics
+        document.getElementById('mbart-time').textContent = '-';
+        document.getElementById('nllb-time').textContent = '-';
+        
+        if (inputText) {
+            spinner.style.display = 'inline-block';
+            
+            fetch('/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    text: inputText, 
+                    direction: translationDirection 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                
+                // Update translations
+                document.getElementById('mbart-output').value = data.mbart.translation;
+                document.getElementById('nllb-output').value = data.nllb.translation;
+                
+                // Update metrics
+                document.getElementById('mbart-time').textContent = data.mbart.time;
+                document.getElementById('nllb-time').textContent = data.nllb.time;
+                
+                // Update comparison chart
+                updateComparisonChart(data.mbart.time, data.nllb.time);
+            })
+            .catch(() => alert('Error connecting to the server.'))
+            .finally(() => spinner.style.display = 'none');
+        } else {
+            alert('Please enter text to translate.');
+        }
+    });
+
+    document.getElementById('swap-btn').addEventListener('click', function () {
+        const sourceLangElement = document.getElementById('source-lang');
+        const targetLangElement = document.getElementById('target-lang');
+        
+        // Swap language labels
+        const tempLang = sourceLangElement.textContent;
+        sourceLangElement.textContent = targetLangElement.textContent;
+        targetLangElement.textContent = tempLang;
+        
+        // Swap textarea contents
+        const inputText = document.getElementById('inputText');
+        const mbartOutput = document.getElementById('mbart-output');
+        const nllbOutput = document.getElementById('nllb-output');
+        
+        // Only swap if there's content in both fields
+        if (mbartOutput.value && nllbOutput.value) {
+            // We use the average of both translations when swapping back
+            const avgOutput = mbartOutput.value && nllbOutput.value ? 
+                              (mbartOutput.value.length > nllbOutput.value.length ? 
+                               mbartOutput.value : nllbOutput.value) : 
+                              '';
+            
+            inputText.value = avgOutput;
+            mbartOutput.value = '';
+            nllbOutput.value = '';
+            
+            // Reset time metrics
+            document.getElementById('mbart-time').textContent = '-';
+            document.getElementById('nllb-time').textContent = '-';
+        }
+        
+        // Toggle translation direction
+        translationDirection = translationDirection === 'en_to_vi' ? 'vi_to_en' : 'en_to_vi';
+    });
+    
+    // Simple chart to compare processing times
+    function updateComparisonChart(mbartTime, nllbTime) {
+        const chartContainer = document.getElementById('time-comparison');
+        const maxTime = Math.max(mbartTime, nllbTime);
+        
+        // Simple bar chart
+        chartContainer.innerHTML = `
+            <div class="chart-title">Processing Time (seconds)</div>
+            <div class="chart-bars">
+                <div class="chart-bar">
+                    <div class="bar-label">MBART-50</div>
+                    <div class="bar-container">
+                        <div class="bar mbart-bar" style="width: ${(mbartTime/maxTime)*100}%"></div>
+                        <div class="bar-value">${mbartTime}s</div>
+                    </div>
+                </div>
+                <div class="chart-bar">
+                    <div class="bar-label">NLLB-200</div>
+                    <div class="bar-container">
+                        <div class="bar nllb-bar" style="width: ${(nllbTime/maxTime)*100}%"></div>
+                        <div class="bar-value">${nllbTime}s</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+</script>
+{% endblock %}
